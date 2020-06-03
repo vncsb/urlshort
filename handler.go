@@ -1,6 +1,7 @@
 package urlshort
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"gopkg.in/yaml.v2"
@@ -10,6 +11,13 @@ type pathUrl struct {
 	Path string `yaml:"path"`
 	URL  string `yaml:"url"`
 }
+
+type pathFormat string
+
+const (
+	YAML pathFormat = "yaml"
+	JSON pathFormat = "json"
+)
 
 // MapHandler will return an http.HandlerFunc (which also
 // implements http.Handler) that will attempt to map any
@@ -46,7 +54,17 @@ func MapHandler(pathsToUrls map[string]string, fallback http.Handler) http.Handl
 // See MapHandler to create a similar http.HandlerFunc via
 // a mapping of paths to urls.
 func YAMLHandler(yamlBytes []byte, fallback http.Handler) (http.HandlerFunc, error) {
-	pathUrls, err := parseYAML(yamlBytes)
+	return unmarshalHandler(yamlBytes, fallback, YAML)
+}
+
+// JSONHandler will parse the provided JSON and then return
+// an http.HandlerFunc (which also implements http.Handler)
+func JSONHandler(jsonBytes []byte, fallback http.Handler) (http.HandlerFunc, error) {
+	return unmarshalHandler(jsonBytes, fallback, JSON)
+}
+
+func unmarshalHandler(pathBytes []byte, fallback http.Handler, format pathFormat) (http.HandlerFunc, error) {
+	pathUrls, err := parse(pathBytes, format)
 	if err != nil {
 		return nil, err
 	}
@@ -54,9 +72,14 @@ func YAMLHandler(yamlBytes []byte, fallback http.Handler) (http.HandlerFunc, err
 	return MapHandler(pathsToUrls, fallback), nil
 }
 
-func parseYAML(yamlBytes []byte) ([]pathUrl, error) {
+func parse(pathBytes []byte, format pathFormat) ([]pathUrl, error) {
 	var pathUrls []pathUrl
-	err := yaml.Unmarshal(yamlBytes, &pathUrls)
+	var err error
+	if format == "json" {
+		err = json.Unmarshal(pathBytes, &pathUrls)
+	} else {
+		err = yaml.Unmarshal(pathBytes, &pathUrls)
+	}
 	if err != nil {
 		return nil, err
 	}
