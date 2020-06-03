@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/boltdb/bolt"
 	"gopkg.in/yaml.v2"
 )
 
@@ -11,6 +12,8 @@ type pathURL struct {
 	Path string `yaml:"path"`
 	URL  string `yaml:"url"`
 }
+
+var db *bolt.DB
 
 type pathFormat string
 
@@ -72,6 +75,23 @@ func unmarshalHandler(pathBytes []byte, fallback http.Handler, format pathFormat
 	return MapHandler(pathsToUrls, fallback), nil
 }
 
+//DBHandler searches BoltDB for the specified url
+func DBHandler(fallback http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var dbValue []byte
+		db.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket([]byte("URLS"))
+			dbValue = b.Get([]byte(r.URL.Path))
+			return nil
+		})
+		if dbValue != nil {
+			http.Redirect(w, r, string(dbValue), http.StatusMovedPermanently)
+		} else {
+			fallback.ServeHTTP(w, r)
+		}
+	}
+}
+
 func parse(pathBytes []byte, format pathFormat) ([]pathURL, error) {
 	var pathUrls []pathURL
 	var err error
@@ -92,4 +112,29 @@ func buildMap(pathUrls []pathURL) map[string]string {
 		pathsToUrls[url.Path] = url.URL
 	}
 	return pathsToUrls
+}
+
+//SetupDB Initializes BoltDB
+func SetupDB(pathsToUrls map[string]string) error {
+	var err error
+	db, err = bolt.Open("url.db", 0600, nil)
+	if err != nil {
+		return err
+	}
+	err = db.Update(func(tx *bolt.Tx) error {
+		urls, err := tx.CreateBucketIfNotExists([]byte("URLS"))
+		if err != nil {
+			return err
+		}
+
+		for v, k := range pathsToUrls {
+			urls.Put([]byte(k), []byte(v))
+		}
+
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }

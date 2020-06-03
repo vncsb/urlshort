@@ -9,6 +9,13 @@ import (
 
 func main() {
 	mux := defaultMux()
+	err := urlshort.SetupDB(map[string]string{
+		"/bolt":         "https://github.com/boltdb/bolt",
+		"/bolt-buckets": "https://github.com/boltdb/bolt#using-buckets",
+	})
+	if err != nil {
+		panic(err)
+	}
 
 	// Build the MapHandler using the mux as the fallback
 	pathsToUrls := map[string]string{
@@ -45,8 +52,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	dbHandler := urlshort.DBHandler(jsonHandler)
+
 	fmt.Println("Starting the server on :8080")
-	http.ListenAndServe(":8080", jsonHandler)
+	http.ListenAndServe(":8080", dbHandler)
 }
 
 func defaultMux() *http.ServeMux {
